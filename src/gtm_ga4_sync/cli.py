@@ -94,6 +94,11 @@ def discover(client_secret: Path | None, token: Path) -> None:
 )
 @click.option("--skip-gtm", is_flag=True, help="Only register GA4 dimensions/metrics.")
 @click.option("--skip-ga4", is_flag=True, help="Only provision GTM resources.")
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Show what would be created/reused without making any writes.",
+)
 @_client_secret_option(required=False)
 @_token_option
 def apply(
@@ -104,6 +109,7 @@ def apply(
     measurement_id: str | None,
     skip_gtm: bool,
     skip_ga4: bool,
+    dry_run: bool,
     client_secret: Path | None,
     token: Path,
 ) -> None:
@@ -115,19 +121,50 @@ def apply(
     config = load_config(config_path)
     creds = _creds_or_exit(client_secret, token)
 
+    gtm_stats = None
+    ga4_stats = None
+
     if not skip_gtm:
         click.echo("========== GTM ==========")
-        apply_gtm(creds, config, gtm_account, gtm_container, measurement_id)
+        gtm_stats = apply_gtm(
+            creds, config, gtm_account, gtm_container, measurement_id, dry_run=dry_run
+        )
 
     if not skip_ga4:
         click.echo("\n========== GA4 ==========")
-        apply_ga4(creds, config, ga4_property)
+        ga4_stats = apply_ga4(creds, config, ga4_property, dry_run=dry_run)
 
-    click.echo(
-        f"\nDone. Review GTM in the UI before publishing:\n"
-        f"  https://tagmanager.google.com/#/container/"
-        f"accounts/{gtm_account}/containers/{gtm_container}"
-    )
+    # Summary
+    click.echo("\n========== Summary ==========")
+    if gtm_stats:
+        click.echo(
+            f"GTM: {gtm_stats.created} created, "
+            f"{gtm_stats.skipped_by_name} skipped (name exists), "
+            f"{gtm_stats.reused_existing} reused (functional duplicate), "
+            f"{len(gtm_stats.errors)} errors"
+        )
+    if ga4_stats:
+        click.echo(
+            f"GA4: {ga4_stats.created} created, "
+            f"{ga4_stats.skipped_existing} skipped (already registered), "
+            f"{len(ga4_stats.errors)} errors"
+        )
+
+    errors = (gtm_stats.errors if gtm_stats else []) + (ga4_stats.errors if ga4_stats else [])
+    if errors:
+        click.echo("\nErrors:")
+        for e in errors:
+            click.echo(f"  - {e}")
+        sys.exit(1)
+
+    if dry_run:
+        click.echo("\nDry run complete. Re-run without --dry-run to apply.")
+    else:
+        click.echo(
+            f"\nDone. Review GTM in the UI before publishing:\n"
+            f"  https://tagmanager.google.com/#/container/"
+            f"accounts/{gtm_account}/containers/{gtm_container}"
+        )
 
 
 if __name__ == "__main__":

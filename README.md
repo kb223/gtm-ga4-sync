@@ -188,7 +188,20 @@ Done. Review GTM in the UI before publishing:
   https://tagmanager.google.com/#/container/accounts/1234567890/containers/987654321
 ```
 
-Rerun any time — already-existing resources (matched by name) are skipped.
+Rerun any time — already-existing resources are skipped. Two layers of duplicate detection:
+
+- **By name** — if a resource with the target name already exists (e.g. `DLV - cta_name`), skip it.
+- **By function** — if an existing resource does the same thing under a different name (a `1PC - Client Id` variable that reads `client_id`, or a `Click - Search` trigger already firing on the `search` event), flag as `[reuse]` and don't create a duplicate. Catches containers that were set up manually with different naming conventions before.
+
+### Preview with `--dry-run`
+
+Before applying, preview what would change:
+
+```bash
+gtm-ga4-sync apply --config events.yml --gtm-account ... --gtm-container ... --ga4-property ... --dry-run
+```
+
+Lists every would-be-created / skipped / reused / errored resource, with a summary at the bottom. No writes hit Google.
 
 ### 4. Push to your dataLayer
 
