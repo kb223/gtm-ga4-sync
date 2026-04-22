@@ -1,16 +1,47 @@
 # gtm-ga4-sync
 
-> **Declare your dataLayer events in YAML. One command provisions the matching GTM triggers, variables, tags — and registers the custom dimensions in GA4.**
+Declare your dataLayer events in YAML. One command provisions the matching GTM triggers, variables, and GA4 Event tags — and registers every custom parameter as a custom dimension or metric in GA4.
 
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-## What you get
+---
 
-Define your site's engagement events once:
+## Install this into your AI coding agent (Claude Code)
+
+Paste this message into a Claude Code session and hit send. It'll clone the repo, install the skill + CLI, and walk you through the one-time OAuth setup.
+
+```
+I'm giving you a skill called gtm-ga4-tagging. Get the files with:
+
+git clone https://github.com/kb223/gtm-ga4-sync
+
+Then:
+1. Symlink the skill into my Claude Code skills folder:
+   ln -s "$PWD/gtm-ga4-sync/skills/gtm-ga4-tagging" ~/.claude/skills/gtm-ga4-tagging
+2. Install the CLI:
+   cd gtm-ga4-sync && python3 -m venv .venv && .venv/bin/pip install .
+3. Walk me through the one-time Google Cloud OAuth client setup from the README.
+4. Then help me tag the engagement events on my site.
+```
+
+The skill teaches Claude Code to grep your codebase for engagement surfaces, propose an event map, write dataLayer pushes, and run `gtm-ga4-sync apply` to provision everything on the Google side.
+
+Works with Gemini CLI and other Markdown-skill-aware agents — just copy the skill body into whatever your client uses for system-prompt context.
+
+---
+
+## Or use the CLI directly (no AI agent needed)
+
+```bash
+git clone https://github.com/kb223/gtm-ga4-sync
+cd gtm-ga4-sync
+python3 -m venv .venv && .venv/bin/pip install .
+```
+
+Write an `events.yml`:
 
 ```yaml
-# events.yml
 events:
   virtual_page_view:
     params: [page_path, page_title]
@@ -20,227 +51,136 @@ events:
     params: [outbound_url, outbound_domain, link_text]
   form_submit:
     params: [form_id, form_name, form_destination]
-  # ... add more — see events.example.yml for the full starter
+
+metrics:
+  - results_count
 ```
 
-Then one command creates everything on the Google side:
+Apply it:
 
 ```bash
 gtm-ga4-sync apply --config events.yml \
-  --gtm-account 1234567890 --gtm-container 987654321 \
-  --ga4-property 111222333
+  --gtm-account <id> --gtm-container <id> \
+  --ga4-property <id>
 ```
 
-Which produces, in the Default Workspace of your GTM container:
+That creates, in your container's Default Workspace:
 
 - **Data Layer Variables** — one `DLV - <param>` per unique event parameter
-- **Custom Event Triggers** — one `CE - <event>` firing on matching `dataLayer.push`
-- **GA4 Event Tags** — one `GA4 - <event>` bound to its trigger, wired to send every param, using your existing `{{CON - Measurement ID}}` (or a measurement ID you pass)
+- **Custom Event Triggers** — one `CE - <event>` firing on each matching `dataLayer.push`
+- **GA4 Event Tags** — one `GA4 - <event>` bound to its trigger, sending every param, referencing your existing `{{CON - Measurement ID}}` constant
 
 And in your GA4 property:
 
-- **Custom Dimensions** (event-scoped) — one per string-valued parameter, registered so they show up in Explorations and standard reports
-- **Custom Metrics** (event-scoped) — for numeric parameters you mark as metrics
+- **Custom Dimensions** — one per string-valued parameter, event-scoped
+- **Custom Metrics** — for numeric parameters you mark under `metrics:`
 
-Nothing gets published — tags land in the Default Workspace as drafts for review. Idempotent: rerun safely, only missing resources are created.
+Tags land as drafts in the Default Workspace. You hit Submit in GTM when you're ready. Idempotent: re-running skips what already exists.
 
-## Why it exists
+## One-time Google Cloud OAuth setup
 
-Event tagging for a new site used to mean an afternoon of clicking through the GTM UI:
-- Create 16 Data Layer Variables, one field at a time
-- Create 10 Custom Event triggers, each with a regex filter
-- Create 10 GA4 Event tags, each binding every parameter by hand
-- Switch to GA4 Admin, register every parameter as a custom dimension
+The tool authenticates using your own OAuth client in your own GCP project. Google treats it as first-party, so sensitive scopes don't hit the "unverified app" block.
 
-Any meaningful engagement-tracking setup is that much tedium, and all of it is mechanical. The GTM and GA4 Admin APIs have been available for years — the friction isn't the APIs, it's the OAuth setup for scopes that Google classifies as "sensitive."
+> Google renamed "OAuth consent screen" to **Google Auth Platform → Branding** in 2025/2026. The URLs below use the new paths.
 
-This tool is the end-to-end version of that workflow:
-
-1. A **declarative config** for your events
-2. **OAuth once** with the right scopes
-3. **One apply command** that provisions both GTM and GA4
-4. **Idempotent** so adding an event later is a one-line config change + rerun
-
-On a mid-complexity SPA (React, Vue, Next.js), setting this up used to take two to three hours of manual clicking. With `gtm-ga4-sync` it's the time it takes to read through the config — under five minutes including the first OAuth consent.
-
----
-
-## Install
-
-Not on PyPI yet — install from source:
-
-```bash
-git clone https://github.com/kb223/gtm-ga4-sync
-cd gtm-ga4-sync
-python3 -m venv .venv
-.venv/bin/pip install .
-```
-
-The CLI will be at `.venv/bin/gtm-ga4-sync`. Activate the venv (`source .venv/bin/activate`) or call the binary directly.
-
-## One-time setup (ten minutes)
-
-You need an OAuth client for a Google Cloud project you control. Using your own client means Google treats it as first-party — no "unverified app" consent blockers, no Workspace admin approval loops.
-
-> **Google renamed the consent flow in 2025/2026.** What used to be "OAuth consent screen" is now **Google Auth Platform > Branding**. The URLs below use the new paths.
-
-1. **Create a Google Cloud project** (or use an existing one):
+1. Create a Google Cloud project, enable the required APIs:
    ```bash
    gcloud projects create my-analytics-ops --name="Analytics Ops"
    gcloud config set project my-analytics-ops
    gcloud services enable tagmanager.googleapis.com analyticsadmin.googleapis.com
    ```
 
-2. **Configure the Google Auth Platform Branding** at
+2. Configure the Auth Platform branding at
    https://console.developers.google.com/auth/branding?project=my-analytics-ops
-   - App name: anything (e.g. "Analytics Ops")
-   - User support email: your email
-   - Audience → User type: **Internal** if you're on Google Workspace (recommended — skips scope verification), or **External** for a personal Gmail account
-   - Contact info → Developer contact email: your email
-   - Accept the policy, click **Create**
-   - You can skip configuring scopes on this screen — the tool requests them at runtime when you auth
+   - App name: anything
+   - User support email: yours
+   - User type: **Internal** if on Google Workspace (skips scope verification), **External** otherwise
+   - Developer contact: yours
+   - Accept policy → Create. You can skip the scopes screen.
 
-3. **Create an OAuth Client ID** at
+3. Create an OAuth Client ID at
    https://console.developers.google.com/auth/clients?project=my-analytics-ops
-   - Click **Create Client**
-   - Application type: **Desktop app**
-   - Name: anything (e.g. "Analytics Ops CLI")
-   - Click **Create**
-   - Click **Download JSON** on the resulting client — save it somewhere you can reference later, e.g.
-     `~/.config/gtm-ga4-sync/client-secret.json`
+   - **Create Client** → Application type: **Desktop app** → Create
+   - Download the JSON to `~/.config/gtm-ga4-sync/client-secret.json`
 
-4. **First run authenticates in the browser**, then caches a refresh token:
+4. First run authenticates in the browser and caches a refresh token:
    ```bash
    gtm-ga4-sync auth --client-secret ~/.config/gtm-ga4-sync/client-secret.json
    ```
 
-   When your browser opens, sign in to the same Google account that owns your GTM container and GA4 property, approve the scopes, done. Subsequent runs pick up the cached token at `~/.config/gtm-ga4-sync/token.json` automatically — you won't need `--client-secret` again unless you rotate the client or run with `--force-reauth`.
+Subsequent runs reuse the cached token automatically. You won't need `--client-secret` again.
 
-## Usage
+## Commands
 
-### 1. Write an events config
+```
+gtm-ga4-sync auth        Run one-time OAuth consent, cache refresh token
+gtm-ga4-sync discover    List every GTM account/container + GA4 property you can access
+gtm-ga4-sync apply       Provision GTM resources + GA4 dimensions from events.yml
+  --config FILE          events.yml path
+  --gtm-account ID
+  --gtm-container ID
+  --ga4-property ID
+  --measurement-id G-X   Optional — default references {{CON - Measurement ID}}
+  --dry-run              Preview without writing
+  --skip-gtm             Only register GA4 dimensions/metrics
+  --skip-ga4             Only provision GTM resources
+```
 
-See `events.example.yml` for a complete template. Minimum structure:
+## How duplicate detection works
+
+Two layers, so you can safely point this at containers that were set up manually before:
+
+1. **By name** — if `DLV - cta_name` already exists, skip.
+2. **By function** — if an existing variable already reads the `cta_name` dataLayer key under a different name (`1PC - CTA Name`, say), reuse it instead of creating a second one. Works the same for Custom Event triggers (matched by the `{{_event}}` value they filter on) and GA4 Event tags (matched by their `eventName`).
+
+Dry-run (`--dry-run`) previews the whole plan with labels: `[skip]` for name matches, `[reuse]` for function matches, `[+]` for new creates.
+
+## Events config reference
+
+See [`events.example.yml`](./events.example.yml) for a full starter template covering page views, CTA clicks, outbound links, forms, downloads, search, video, and newsletter signups.
+
+Minimum structure:
 
 ```yaml
 events:
-  virtual_page_view:
-    params: [page_path, page_title]
-  cta_click:
-    params: [cta_name, cta_destination, cta_location]
-  search:
-    params: [search_term, results_count]
+  <event_name>:
+    params: [<param1>, <param2>, ...]
 
-# Parameters to register as GA4 custom METRICS (numeric) rather than dimensions
-metrics:
-  - results_count
+metrics:               # optional — params to register as GA4 custom metrics
+  - <numeric_param>
 
-# Optional: friendly display names for GA4 (auto-generated from param name otherwise)
-display_names:
-  cta_name: "CTA Name"
-  cta_destination: "CTA Destination"
+display_names:         # optional — defaults to Title Case of param name
+  <param>: "Friendly Name"
 ```
 
-### 2. Discover your GTM account / container / GA4 property IDs
+## GTM naming conventions
 
-```bash
-gtm-ga4-sync discover
-```
+Follows community norms so the container reads consistently for the next engineer:
 
-Lists every GTM account and container your authenticated user can see, plus GA4 properties. Copy the IDs you want.
+| Prefix | Resource |
+|---|---|
+| `DLV - ` | Data Layer Variable |
+| `CJS - ` | Custom JavaScript |
+| `CON - ` | Constant |
+| `LT - ` | Lookup Table |
+| `RXT - ` | RegEx Table |
+| `CE - ` | Custom Event Trigger |
+| `PV - ` | Page View Trigger |
+| `Click - ` | Click Trigger |
+| `GA4 - ` | GA4 Event Tag |
+| `HTML - ` | Custom HTML Tag |
 
-### 3. Apply the config
+## Limitations
 
-```bash
-gtm-ga4-sync apply \
-  --config events.yml \
-  --gtm-account 1234567890 \
-  --gtm-container 987654321 \
-  --ga4-property 111222333
-```
+- Publishes nothing — you review the diff in GTM and hit Submit. Intentional.
+- Doesn't delete resources when you remove events from config. Clean up in the UI.
+- GA4 property + data stream must exist first — doesn't create those.
+- Targets the Default Workspace only. Multi-workspace support would be a flag away if anyone needs it.
 
-Output (abbreviated):
+## Contributing
 
-```
-========== GTM ==========
-  workspace: accounts/1234567890/containers/987654321/workspaces/2
-  measurement id: {{CON - Measurement ID}}
-
-[GTM 1/3] Data Layer Variables
-  [+]   DLV - cta_name
-  [+]   DLV - cta_destination
-  ...
-[GTM 2/3] Custom Event Triggers
-  [+]   CE - cta_click
-  ...
-[GTM 3/3] GA4 Event Tags
-  [+]   GA4 - cta_click
-  ...
-
-========== GA4 ==========
-[GA4 1/2] Custom dimensions on properties/111222333
-  [+]   dimension 'cta_name'
-  ...
-[GA4 2/2] Custom metrics
-  [+]   metric 'results_count'
-
-Done. Review GTM in the UI before publishing:
-  https://tagmanager.google.com/#/container/accounts/1234567890/containers/987654321
-```
-
-Rerun any time — already-existing resources are skipped. Two layers of duplicate detection:
-
-- **By name** — if a resource with the target name already exists (e.g. `DLV - cta_name`), skip it.
-- **By function** — if an existing resource does the same thing under a different name (a `1PC - Client Id` variable that reads `client_id`, or a `Click - Search` trigger already firing on the `search` event), flag as `[reuse]` and don't create a duplicate. Catches containers that were set up manually with different naming conventions before.
-
-### Preview with `--dry-run`
-
-Before applying, preview what would change:
-
-```bash
-gtm-ga4-sync apply --config events.yml --gtm-account ... --gtm-container ... --ga4-property ... --dry-run
-```
-
-Lists every would-be-created / skipped / reused / errored resource, with a summary at the bottom. No writes hit Google.
-
-### 4. Push to your dataLayer
-
-From your app:
-
-```javascript
-window.dataLayer = window.dataLayer || []
-window.dataLayer.push({
-  event: 'cta_click',
-  cta_name: 'view_my_work',
-  cta_destination: '/projects',
-  cta_location: 'home_hero',
-})
-```
-
-Validation: open GTM Preview mode, click around, and watch every event hit the debugger with its parameters. Once you're satisfied, publish the workspace in GTM.
-
-## How it works
-
-- **OAuth2 with `InstalledAppFlow`** — your own OAuth client in your own GCP project. First run opens a browser consent, cached refresh token at `~/.config/gtm-ga4-sync/token.json` afterward. No service account keys to rotate or leak.
-- **Required scopes**: `tagmanager.edit.containers` + `analytics.edit`. You only pay the consent cost once.
-- **Naming conventions** (follow GTM community norms):
-  - Data Layer Variables: `DLV - <param>`
-  - Custom Event Triggers: `CE - <event>`
-  - GA4 Event Tags: `GA4 - <event>`
-- **Rate limiting**: ~2s between writes — GTM's Tag Manager API caps at ~30 writes per minute. A 20-event config takes about 2 minutes.
-- **Measurement ID resolution**: by default, references the first existing `{{CON - Measurement ID}}` constant variable in the container. Override with `--measurement-id G-XXXXXXX` if you want a raw ID.
-
-## Limitations / not in scope (yet)
-
-- Publishes nothing — you hit "Submit" in the GTM UI yourself. Intentional: lets you review diff before committing.
-- Doesn't delete resources when you remove events from config. Intentional: avoids accidental destructive runs. If you want to clean up, delete in GTM UI.
-- GA4 Data Stream / measurement ID creation is out of scope — create your property and data stream first.
-- Single-container at a time. Running against multiple containers is just a shell loop.
-
-## Author
-
-Built by [Kenneth J. Buchanan](https://kennethjbuchanan.com) — Senior Agentic Analytics Engineer. If you hit edges, I'd love to hear about it: open an issue, or reach out via [roseskyconsulting.com](https://roseskyconsulting.com/scoping-call/).
+Issues and PRs welcome. Built by [Kenneth J. Buchanan](https://kennethjbuchanan.com).
 
 ## License
 
-MIT. Use it freely, sell services on top of it, attribute whenever's easy.
+MIT — see [LICENSE](./LICENSE).
