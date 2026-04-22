@@ -1,0 +1,75 @@
+# Example events.yml — copy, edit, apply.
+#
+# These are the events most sites track. Delete what you don't need,
+# add your own, re-run `gtm-ga4-sync apply`.
+#
+# Each top-level key under `events` becomes a custom dataLayer event
+# (the value you push as `event: '...'`). Its `params` list becomes the
+# GTM Data Layer Variables + GA4 custom dimensions that get provisioned.
+
+events:
+  # SPA route changes — fire on every React Router / Vue Router / Next.js
+  # navigation because GA4's default page_view only fires on hard loads.
+  virtual_page_view:
+    params: [page_path, page_title]
+
+  # Any CTA / button click — hero, nav, banner, footer
+  cta_click:
+    params: [cta_name, cta_destination, cta_location]
+
+  # Clicks on any external link
+  outbound_link_click:
+    params: [outbound_url, outbound_domain, link_text]
+
+  # Forms — fire on first field focus, again on submit
+  form_start:
+    params: [form_id, form_name]
+  form_submit:
+    params: [form_id, form_name, form_destination]
+
+  # File downloads — PDFs, whitepapers, zips, anything
+  file_download:
+    params: [file_name, file_extension, file_url]
+
+  # Site search
+  search:
+    params: [search_term, results_count]
+
+  # Video engagement — YouTube, Vimeo, self-hosted
+  video_play:
+    params: [video_title, video_provider, video_duration_seconds]
+
+  # Newsletter / lead-magnet email capture
+  newsletter_signup:
+    params: [signup_source]
+
+# Numeric parameters — registered as GA4 custom METRICS instead of
+# dimensions so you can SUM/AVG them in reports. They're still valid
+# event parameters, just typed as metrics in GA4 Admin.
+metrics:
+  - results_count
+  - video_duration_seconds
+
+# Optional: human-readable display names for GA4 (default: Title Case with
+# underscores as spaces). GA4 constraint: alphanumeric, underscore, or space.
+display_names:
+  page_path: "Page Path SPA"
+  page_title: "Page Title SPA"
+  cta_name: "CTA Name"
+  cta_destination: "CTA Destination"
+  cta_location: "CTA Location"
+  outbound_url: "Outbound URL"
+  outbound_domain: "Outbound Domain"
+  link_text: "Link Text"
+  form_id: "Form ID"
+  form_name: "Form Name"
+  form_destination: "Form Destination"
+  file_name: "File Name"
+  file_extension: "File Extension"
+  file_url: "File URL"
+  search_term: "Search Term"
+  results_count: "Search Results Count"
+  video_title: "Video Title"
+  video_provider: "Video Provider"
+  video_duration_seconds: "Video Duration Seconds"
+  signup_source: "Signup Source"
